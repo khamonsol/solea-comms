@@ -1,0 +1,162 @@
+#
+#      Webhook payload 
+#{
+#  "type": "email" | "slack",
+#  "message": "Your message content",
+#  "recipient": "email@example.com" | "slack_channel_id",
+#  "subject": "Email subject (for email only)"
+#}
+#
+#
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: message-sender-
+spec:
+  entrypoint: send-message
+  arguments:
+    parameters:
+    - name: type
+    - name: message
+    - name: recipient
+    - name: subject
+  templates:
+  - name: send-message
+    inputs:
+      parameters:
+      - name: type
+      - name: message
+      - name: recipient
+      - name: subject
+    steps:
+    - - name: send-email
+        template: email
+        when: "{{inputs.parameters.type}} == 'email'"
+        arguments:
+          parameters:
+          - name: message
+            value: "{{inputs.parameters.message}}"
+          - name: recipient
+            value: "{{inputs.parameters.recipient}}"
+          - name: subject
+            value: "{{inputs.parameters.subject}}"
+    - - name: send-slack
+        template: slack
+        when: "{{inputs.parameters.type}} == 'slack'"
+        arguments:
+          parameters:
+          - name: message
+            value: "{{inputs.parameters.message}}"
+          - name: recipient
+            value: "{{inputs.parameters.recipient}}"
+
+  - name: email
+    inputs:
+      parameters:
+      - name: message
+      - name: recipient
+      - name: subject
+    container:
+      image: your-email-image:tag
+      command: ["/app/smtp-cli"]
+      args: [
+        "--server", "$(SMTP_SERVER)",
+        "--port", "$(SMTP_PORT)",
+        "--user", "$(SMTP_USER)",
+        "--pass", "$(SMTP_PASSWORD)",
+        "--from", "sender@example.com",
+        "--to", "{{inputs.parameters.recipient}}",
+        "--subject", "{{inputs.parameters.subject}}",
+        "--body", "{{inputs.parameters.message}}"
+      ]
+      env:
+      - name: SMTP_SERVER
+        value: "your_smtp_server"
+      - name: SMTP_PORT
+        value: "your_smtp_port"
+      - name: SMTP_USER
+        value: "your_smtp_user"
+      - name: SMTP_PASSWORD
+        value: "your_smtp_password"
+
+  - name: slack
+    inputs:
+      parameters:
+      - name: message
+      - name: recipient
+    container:
+      image: your-slack-image:tag
+      command: ["/app/slack"]
+      args: [
+        "chat",
+        "send",
+        "--channel", "{{inputs.parameters.recipient}}",
+        "--text", "{{inputs.parameters.message}}"
+      ]
+      env:
+      - name: SLACK_CLI_TOKEN
+        value: "your_slack_bot_token"
+---
+apiVersion: argoproj.io/v1alpha1
+kind: EventSource
+metadata:
+  name: webhook
+spec:
+  service:
+    ports:
+      - port: 12000
+        targetPort: 12000
+  webhook:
+    message-webhook:
+      port: "12000"
+      endpoint: /message
+      method: POST
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Sensor
+metadata:
+  name: message-sensor
+spec:
+  dependencies:
+    - name: message-webhook
+      eventSourceName: webhook
+      eventName: message-webhook
+  triggers:
+    - template:
+        name: message-workflow-trigger
+        k8s:
+          operation: create
+          source:
+            resource:
+              apiVersion: argoproj.io/v1alpha1
+              kind: Workflow
+              metadata:
+                generateName: message-sender-
+              spec:
+                workflowTemplateRef:
+                  name: message-sender
+                arguments:
+                  parameters:
+                    - name: type
+                      value: "{{ .body.type }}"
+                    - name: message
+                      value: "{{ .body.message }}"
+                    - name: recipient
+                      value: "{{ .body.recipient }}"
+                    - name: subject
+                      value: "{{ .body.subject }}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webhook-eventsource-svc
+spec:
+  selector:
+    eventsource-name: webhook
+  ports:
+    - port: 12000
+      targetPort: 12000
+  type: LoadBalancer
+---
+
