@@ -1,0 +1,26 @@
+# Use a lightweight base image
+FROM alpine:latest
+
+# Install required dependencies
+RUN apk add --no-cache perl perl-io-socket-ssl perl-net-ssleay
+
+# Set the working directory
+WORKDIR /app
+
+# Copy the smtp-cli script into the container
+COPY smtp-cli /app/smtp-cli
+
+# Make the script executable
+RUN chmod +x /app/smtp-cli
+
+# Set environment variables for SMTP server information and credentials
+ENV SMTP_SERVER=""
+ENV SMTP_PORT=""
+ENV SMTP_USER=""
+ENV SMTP_PASSWORD=""
+
+# Set the entrypoint to the smtp-cli script
+ENTRYPOINT ["/app/smtp-cli"]
+
+# Default command (can be overridden)
+CMD ["--help"]

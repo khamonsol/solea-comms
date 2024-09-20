@@ -1,0 +1,23 @@
+# Use Alpine Linux as the base image
+FROM alpine:3.14
+
+# Install required dependencies
+RUN apk add --no-cache bash curl jq
+
+# Set the working directory
+WORKDIR /app
+
+# Copy the slack-cli script
+COPY src/slack /app/slack
+
+# Make the script executable
+RUN chmod +x /app/slack
+
+# Set environment variable for Slack bot token
+ENV SLACK_CLI_TOKEN=""
+
+# Set the entrypoint to the slack script
+ENTRYPOINT ["/app/slack"]
+
+# Use CMD to set default arguments (can be overridden)
+CMD ["--help"]
